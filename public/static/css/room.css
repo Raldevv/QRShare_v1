@@ -737,7 +737,9 @@ input[type="file"] {
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-right: 4px;
+  padding-top: 4px;      /* Prevents top border clipping on hover */
+  padding-bottom: 4px;   /* Prevents bottom shadow/border clipping */
+  padding-right: 4px;    /* Leaves space for scrollbar */
 }
 
 .file-item {
@@ -751,12 +753,15 @@ input[type="file"] {
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
   flex-shrink: 0;
+  position: relative; /* Established stacking context */
+  z-index: 1;         /* Base elevation */
 }
 
 .file-item:hover {
   background: var(--glass-surface-hover);
   border-color: rgba(255, 255, 255, 0.18);
   transform: translateY(-2px);
+  z-index: 10;        /* Elevates hovered item above its siblings */
 }
 
 .item-main-link {
