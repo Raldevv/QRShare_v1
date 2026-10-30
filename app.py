@@ -752,6 +752,7 @@ def create_share(db, item_id: str, duration_key: str, uses_key: str) -> str:
     db.commit()
     return public_link(token), share_id
 
+@csrf.exempt
 @app.route("/api/item/share/<file_id>", methods=["POST"])
 def api_share_file(file_id):
     username = current_username()
