@@ -4,7 +4,7 @@
   src: url('/static/fonts/ComicNeue-Angular-Regular.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }
 
 @font-face {
@@ -12,7 +12,7 @@
   src: url('/static/fonts/ComicNeue-Angular_Bold.otf') format('opentype');
   font-weight: 700;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }
 
 *,
@@ -24,7 +24,7 @@ input,
 button,
 select,
 textarea {
-  font-family: 'Comic Neue Angular', cursive, sans-serif !important;
+  font-family: 'Comic Neue Angular', system-ui, -apple-system, sans-serif !important;
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -279,7 +279,7 @@ h1 {
 /* --- Action Buttons (Side-by-Side Precision Match) --- */
 .actions-group {
   display: flex;
-  flex-direction: row !important; /* Preserves horizontal layout on all screen sizes */
+  flex-direction: row !important;
   gap: 12px;
   width: 100%;
 }
@@ -294,7 +294,7 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  flex: 1; /* Exact 50/50 balance */
+  flex: 1;
   cursor: pointer;
   letter-spacing: 0.01em;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease, border-color 0.15s ease;
@@ -386,7 +386,6 @@ h1 {
     gap: 12px;
   }
 
-  /* Remains side-by-side on mobile screens */
   .actions-group {
     flex-direction: row !important;
     gap: 10px;
