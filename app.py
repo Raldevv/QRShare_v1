@@ -256,7 +256,7 @@ SCHEMA = [
 _schema_ready = False
 
 def ensure_schema():
-    """Create tables once per server instance and bootstrap the  account."""
+    """Create tables once per server instance and bootstrap the account."""
     global _schema_ready
     if _schema_ready:
         return
@@ -719,6 +719,7 @@ def view_virtual(view_name):
                            current_folder={"id": ""}, current_sort="name", current_order="ASC",
                            qr_code=None, link=None)
 
+@csrf.exempt
 @app.route("/item/create_folder", methods=["POST"])
 def create_folder():
     username = current_username()
@@ -1010,6 +1011,7 @@ def _descendant_ids(db, root_id, owner_id):
 def _in_clause(ids):
     return ",".join("?" for _ in ids)
 
+@csrf.exempt
 @app.route("/item/trash/<item_id>", methods=["POST"])
 def move_to_trash(item_id):
     username, db = current_username(), get_db()
@@ -1021,6 +1023,7 @@ def move_to_trash(item_id):
         log_event("trash", username=username, item_id=item_id)
     return redirect(safe_back())
 
+@csrf.exempt
 @app.route("/item/restore/<item_id>", methods=["POST"])
 def restore_item(item_id):
     username, db = current_username(), get_db()
@@ -1031,6 +1034,7 @@ def restore_item(item_id):
         db.commit()
     return redirect("/virtual/trash")
 
+@csrf.exempt
 @app.route("/item/delete_forever/<item_id>", methods=["POST"])
 def delete_forever(item_id):
     username, db = current_username(), get_db()
@@ -1045,6 +1049,7 @@ def delete_forever(item_id):
         log_event("delete_forever", username=username, item_id=item_id)
     return redirect("/virtual/trash")
 
+@csrf.exempt
 @app.route("/item/star/<item_id>", methods=["POST"])
 def toggle_star(item_id):
     db = get_db()
