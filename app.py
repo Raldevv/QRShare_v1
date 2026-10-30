@@ -29,6 +29,7 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+import re
 
 import cloudinary
 import cloudinary.api
@@ -112,14 +113,11 @@ DURATION_MAP = {"1": timedelta(hours=1), "2": timedelta(hours=2),
 def now_utc():
     return datetime.now(timezone.utc)
 
-
 def iso(dt):
     return dt.astimezone(timezone.utc).isoformat()
 
-
 def now_iso():
     return iso(now_utc())
-
 
 def parse_iso(value):
     if not value:
@@ -127,24 +125,19 @@ def parse_iso(value):
     dt = datetime.fromisoformat(value)
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
-
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-
 def client_ip() -> str:
     return request.remote_addr or "0.0.0.0"   # ProxyFix has applied X-Forwarded-For
-
 
 def ip_fingerprint() -> str:
     """Pseudonymous, salted source fingerprint (no raw IPs stored)."""
     return hashlib.sha256((SECRET_KEY + client_ip()).encode()).hexdigest()[:16]
 
-
 def public_link(token: str) -> str:
     base = PUBLIC_BASE_URL or request.url_root.rstrip("/")
     return f"{base}/share/{token}"
-
 
 def safe_back(default="/"):
     ref = request.referrer
@@ -154,7 +147,6 @@ def safe_back(default="/"):
             return p.path + (f"?{p.query}" if p.query else "")
     return default
 
-
 def make_qr_b64(link: str) -> str:
     img = qrcode.make(link, box_size=10, border=2,
                       error_correction=qrcode.constants.ERROR_CORRECT_M)
@@ -162,7 +154,6 @@ def make_qr_b64(link: str) -> str:
     img.save(buf, format="PNG")
     import base64
     return base64.b64encode(buf.getvalue()).decode("ascii")
-
 
 # --------------------------------------------------------------------------
 # Database layer (Postgres on Vercel/Neon, SQLite for local development)
@@ -195,19 +186,16 @@ class DB:
         except Exception:
             pass
 
-
 def get_db() -> DB:
     if "db" not in g:
         g.db = DB()
     return g.db
-
 
 @app.teardown_appcontext
 def close_db(_exc=None):
     db = g.pop("db", None)
     if db is not None:
         db.close()
-
 
 SCHEMA = [
     """CREATE TABLE IF NOT EXISTS users (
@@ -267,7 +255,6 @@ SCHEMA = [
 
 _schema_ready = False
 
-
 def ensure_schema():
     """Create tables once per server instance and bootstrap the  account."""
     global _schema_ready
@@ -290,7 +277,6 @@ def ensure_schema():
             db.commit()
     _schema_ready = True
 
-
 # --------------------------------------------------------------------------
 # Rate limiting + audit log (stored in the database so it works across
 # serverless instances - in-memory counters would not)
@@ -302,7 +288,6 @@ def is_rate_limited(key: str, limit: int, window_s: int) -> bool:
                            (key, cutoff)).fetchone()
     return row["n"] >= limit
 
-
 def rate_hit(key: str):
     db = get_db()
     db.execute("INSERT INTO rate_limits (key, ts) VALUES (?, ?)", (key, now_iso()))
@@ -310,12 +295,10 @@ def rate_hit(key: str):
         db.execute("DELETE FROM rate_limits WHERE ts < ?", (iso(now_utc() - timedelta(days=1)),))
     db.commit()
 
-
 def rate_clear(key: str):
     db = get_db()
     db.execute("DELETE FROM rate_limits WHERE key = ?", (key,))
     db.commit()
-
 
 def log_event(event, username=None, item_id=None, share_id=None, detail=None):
     db = get_db()
@@ -327,7 +310,6 @@ def log_event(event, username=None, item_id=None, share_id=None, detail=None):
     )
     db.commit()
 
-
 # --------------------------------------------------------------------------
 # Upload validation: whitelist + deep content verification
 # --------------------------------------------------------------------------
@@ -338,13 +320,11 @@ OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 OOXML_ROOT = {"docx": "word/", "xlsx": "xl/", "pptx": "ppt/"}
 IMAGE_FORMAT = {"png": "PNG", "jpg": "JPEG", "jpeg": "JPEG", "gif": "GIF"}
 
-
 def allowed_extension(filename: str):
     if "." not in filename:
         return None
     ext = filename.rsplit(".", 1)[1].lower()
     return ext if ext in ALLOWED_EXTENSIONS else None
-
 
 def _check_zip(data: bytes, ext: str):
     try:
@@ -366,7 +346,6 @@ def _check_zip(data: bytes, ext: str):
         if any(n.lower().endswith("vbaproject.bin") for n in names):
             return False, "Documents containing macros are not allowed."
     return True, ""
-
 
 def verify_file_content(ext: str, data: bytes):
     """Return (ok, reason). Inspects the real bytes, not the file name."""
@@ -403,7 +382,6 @@ def verify_file_content(ext: str, data: bytes):
         return True, ""
     return False, "Unsupported file type."
 
-
 # --------------------------------------------------------------------------
 # Cloudinary helpers (private / authenticated storage, expiring signed URLs)
 # --------------------------------------------------------------------------
@@ -412,19 +390,16 @@ def cloud_configured() -> bool:
     c = cloudinary.config()
     return bool(c.cloud_name and c.api_key and c.api_secret)
 
-
 def signed_download_url(public_id: str, ext: str, ttl: int = SIGNED_URL_TTL) -> str:
     return cloudinary.utils.private_download_url(
         public_id, ext, resource_type="raw", type="authenticated",
         attachment=True, expires_at=int(time.time()) + ttl,
     )
 
-
 def fetch_asset_bytes(public_id: str, ext: str, limit: int) -> bytes:
     req = Request(signed_download_url(public_id, ext, 90), headers={"User-Agent": "qrshare-verify"})
     with urlopen(req, timeout=25) as resp:
         return resp.read(limit + 1)
-
 
 def purge_cloud_file(public_id):
     if not public_id:
@@ -433,7 +408,6 @@ def purge_cloud_file(public_id):
         cloudinary.uploader.destroy(public_id, resource_type="raw", type="authenticated", invalidate=True)
     except Exception:
         pass
-
 
 # --------------------------------------------------------------------------
 # Template helpers
@@ -464,16 +438,13 @@ def share_info_filter(item):
     uses_str = "1 use" if uses_left == 1 else ("Unlimited" if uses_left is None else f"{uses_left} uses")
     return {"status": "active", "uses": uses_str, "time": time_str}
 
-
 @app.before_request
 def set_csp_nonce():
     g.csp_nonce = secrets.token_urlsafe(16)
 
-
 @app.context_processor
 def inject_globals():
     return {"csp_nonce": g.get("csp_nonce", "")}
-
 
 @app.after_request
 def security_headers(resp):
@@ -489,7 +460,7 @@ def security_headers(resp):
     )
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
-    resp.headers["Referrer-Policy"] = "no-referrer"     # share tokens live in URLs
+    resp.headers["Referrer-Policy"] = "no-referrer"      # share tokens live in URLs
     resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     if IS_PROD:
@@ -499,14 +470,12 @@ def security_headers(resp):
         resp.headers["Pragma"] = "no-cache"
     return resp
 
-
 # --------------------------------------------------------------------------
 # Authentication gate
 # --------------------------------------------------------------------------
 
 PUBLIC_ENDPOINTS = {"login", "register", "welcome", "share_item", "share_download",
                     "api_share_status", "static"}
-
 
 @app.before_request
 def gate():
@@ -534,15 +503,12 @@ def gate():
         return redirect("/welcome")
     return None
 
-
 def current_username():
     return g.user["username"]
-
 
 def require_admin():
     if g.user is None or g.user["role"] != "admin":
         abort(403)
-
 
 # --------------------------------------------------------------------------
 # Error handlers (no internal details leak to the browser)
@@ -555,53 +521,42 @@ def _error_response(code, message):
             f"<body style='font-family:sans-serif;padding:3rem;background:#0b1020;color:#e5e7eb'>"
             f"<h2>{code}</h2><p>{message}</p><p><a style='color:#818cf8' href='/'>Back to QRShare</a></p>"), code
 
-
 @app.errorhandler(CSRFError)
 def handle_csrf(_e):
     return _error_response(400, "Your session expired. Please refresh the page and try again.")
-
 
 @app.errorhandler(400)
 def handle_400(e):
     return _error_response(400, getattr(e, "description", "Bad request."))
 
-
 @app.errorhandler(403)
 def handle_403(_e):
     return _error_response(403, "You do not have permission to do that.")
-
 
 @app.errorhandler(404)
 def handle_404(_e):
     return _error_response(404, "Not found.")
 
-
 @app.errorhandler(413)
 def handle_413(_e):
     return _error_response(413, "Request too large.")
-
 
 @app.errorhandler(500)
 def handle_500(_e):
     return _error_response(500, "Something went wrong on our side.")
 
-
 # --------------------------------------------------------------------------
 # Auth routes
 # --------------------------------------------------------------------------
 
-import re  # noqa: E402
-
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 DUMMY_HASH = generate_password_hash("qrshare-dummy-password")
-
 
 @app.route("/welcome")
 def welcome():
     if g.user:
         return redirect("/")
     return render_template("index.html")
-
 
 @csrf.exempt
 @app.route("/login", methods=["GET", "POST"])
@@ -611,14 +566,14 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         ip_key, user_key = f"login:ip:{ip_fingerprint()}", f"login:user:{username.lower()}"
-        if is_rate_limited(ip_key, 50, 900) or is_rate_limited(user_key, 5, 900):   # per-IP limit is generous: campuses share one IP
+        if is_rate_limited(ip_key, 50, 900) or is_rate_limited(user_key, 5, 900):
             log_event("login_blocked", username=username[:32])
             error = "Too many attempts. Please wait 15 minutes and try again."
             return render_template("login.html", error=error), 429
         user = get_db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-        ok = check_password_hash(user["password"] if user else DUMMY_HASH, password)  # constant-ish time
+        ok = check_password_hash(user["password"] if user else DUMMY_HASH, password)
         if user and ok:
-            session.clear()                       # prevents session fixation
+            session.clear()                        # prevents session fixation
             session["user"] = user["username"]
             session["iat"] = int(time.time())
             rate_clear(user_key)
@@ -631,7 +586,6 @@ def login():
         log_event("login_fail", username=username[:32])
         error = "Invalid username or password"
     return render_template("login.html", error=error)
-
 
 @csrf.exempt
 @app.route("/register", methods=["GET", "POST"])
@@ -675,7 +629,6 @@ def register():
                 error = "Username already exists"
     return render_template("register.html", error=error, require_code=require_code)
 
-
 @csrf.exempt
 @app.route("/logout", methods=["POST"])
 def logout():
@@ -683,7 +636,6 @@ def logout():
         log_event("logout", username=g.user["username"])
     session.clear()
     return redirect("/welcome")
-
 
 # --------------------------------------------------------------------------
 # Folder browsing
@@ -694,7 +646,6 @@ SHARE_COLUMNS = """
     (SELECT s.expires_at FROM shares s WHERE s.item_id = items.id ORDER BY s.created_at DESC LIMIT 1) AS share_expires_at,
     (SELECT s.uses_left FROM shares s WHERE s.item_id = items.id ORDER BY s.created_at DESC LIMIT 1) AS share_uses_left
 """
-
 
 @app.route("/")
 def root_redirect():
@@ -712,7 +663,6 @@ def root_redirect():
                    "VALUES (?, 'My Files', 'folder', NULL, ?, ?, ?)", (root_id, username, ts, ts))
         db.commit()
     return redirect(f"/folder/{root_id}")
-
 
 @app.route("/folder/<folder_id>")
 def view_folder(folder_id):
@@ -749,7 +699,6 @@ def view_folder(folder_id):
                            breadcrumbs=breadcrumbs, view_type="folder", current_sort=sort_by,
                            current_order=sort_ord, qr_code=qr_code, link=link)
 
-
 @app.route("/virtual/<view_name>")
 def view_virtual(view_name):
     username = current_username()
@@ -770,7 +719,6 @@ def view_virtual(view_name):
                            current_folder={"id": ""}, current_sort="name", current_order="ASC",
                            qr_code=None, link=None)
 
-
 @app.route("/item/create_folder", methods=["POST"])
 def create_folder():
     username = current_username()
@@ -787,7 +735,6 @@ def create_folder():
     log_event("folder_create", username=username, item_id=parent_id)
     return redirect(f"/folder/{parent_id}")
 
-
 # --------------------------------------------------------------------------
 # Share links
 # --------------------------------------------------------------------------
@@ -797,14 +744,13 @@ def create_share(db, item_id: str, duration_key: str, uses_key: str) -> str:
     delta = DURATION_MAP.get(duration_key)
     expires_at = iso(now_utc() + delta) if delta else None
     uses_left = 1 if uses_key == "1" else None
-    token = secrets.token_urlsafe(24)                     # 192 bits of entropy
+    token = secrets.token_urlsafe(24)                      # 192 bits of entropy
     share_id = str(uuid.uuid4())
     db.execute("INSERT INTO shares (id, item_id, token_hash, created_at, expires_at, uses_left) "
                "VALUES (?, ?, ?, ?, ?, ?)",
                (share_id, item_id, hash_token(token), now_iso(), expires_at, uses_left))
     db.commit()
     return public_link(token), share_id
-
 
 @app.route("/api/item/share/<file_id>", methods=["POST"])
 def api_share_file(file_id):
@@ -825,7 +771,6 @@ def api_share_file(file_id):
     return jsonify({"success": True, "link": link, "qr_code": make_qr_b64(link),
                     "filename": file_item["name"]})
 
-
 def lookup_share(token: str):
     """Return (share, item, state). state in: active | expired | burned | missing."""
     db = get_db()
@@ -841,7 +786,6 @@ def lookup_share(token: str):
     if share["expires_at"] and parse_iso(share["expires_at"]) <= now_utc():
         return share, item, "expired"
     return share, item, "active"
-
 
 @app.route("/share/<token>", methods=["GET"])
 def share_item(token):
@@ -864,7 +808,6 @@ def share_item(token):
     return render_template("share.html", status="active", item=item, share=share,
                            download_link=url_for("share_download", token=token),
                            confirm_token=confirm)
-
 
 @csrf.exempt   # public, cookie-less action; protected by a signed, expiring confirm token instead
 @app.route("/share/<token>/download", methods=["POST"])
@@ -902,7 +845,6 @@ def share_download(token):
     log_event("share_download", item_id=item["id"], share_id=share["id"])
     return redirect(cloud_url, code=303)
 
-
 @app.route("/api/share/status/<token>")
 def api_share_status(token):
     ip_key = f"status:{ip_fingerprint()}"
@@ -914,11 +856,11 @@ def api_share_status(token):
         return jsonify({"active": True, "uses_left": share["uses_left"]})
     return jsonify({"active": False, "reason": state})
 
-
 # --------------------------------------------------------------------------
 # Upload: sign (server) -> upload directly to Cloudinary (browser) -> verify (server)
 # --------------------------------------------------------------------------
 
+@csrf.exempt
 @app.route("/api/upload/sign", methods=["POST"])
 def api_upload_sign():
     username = current_username()
@@ -968,7 +910,7 @@ def api_upload_sign():
         "fields": {**params, "api_key": cloud.api_key, "signature": signature},
     })
 
-
+@csrf.exempt
 @app.route("/api/upload/finalize", methods=["POST"])
 def api_upload_finalize():
     username = current_username()
@@ -1009,7 +951,6 @@ def api_upload_finalize():
     session["ephemeral_link"] = link                    # shown once after the redirect (PRG)
     return jsonify({"success": True})
 
-
 # --------------------------------------------------------------------------
 # Owner downloads + live status APIs
 # --------------------------------------------------------------------------
@@ -1026,7 +967,6 @@ def download_item(file_id):
     ext = item["name"].rsplit(".", 1)[-1].lower() if "." in item["name"] else ""
     return redirect(signed_download_url(item["file_path"], ext), code=303)
 
-
 @app.route("/api/item/exists/<file_id>")
 def api_item_exists(file_id):
     row = get_db().execute(
@@ -1034,14 +974,12 @@ def api_item_exists(file_id):
         (file_id, current_username())).fetchone()
     return jsonify({"exists": row is not None})
 
-
 @app.route("/api/folder/<folder_id>/contents")
 def api_folder_contents(folder_id):
     rows = get_db().execute(
         "SELECT id, name, type, size, is_starred FROM items "
         "WHERE parent_id = ? AND owner_id = ? AND deleted_at IS NULL", (folder_id, current_username())).fetchall()
     return jsonify({"success": True, "items": [dict(r) for r in rows]})
-
 
 # --------------------------------------------------------------------------
 # Trash / restore / delete / star
@@ -1056,10 +994,8 @@ def _descendant_ids(db, root_id, owner_id):
            ) SELECT id FROM subtree""", (root_id, owner_id, owner_id)).fetchall()
     return [r["id"] for r in rows]
 
-
 def _in_clause(ids):
     return ",".join("?" for _ in ids)
-
 
 @app.route("/item/trash/<item_id>", methods=["POST"])
 def move_to_trash(item_id):
@@ -1072,7 +1008,6 @@ def move_to_trash(item_id):
         log_event("trash", username=username, item_id=item_id)
     return redirect(safe_back())
 
-
 @app.route("/item/restore/<item_id>", methods=["POST"])
 def restore_item(item_id):
     username, db = current_username(), get_db()
@@ -1082,7 +1017,6 @@ def restore_item(item_id):
                    (*ids, username))
         db.commit()
     return redirect("/virtual/trash")
-
 
 @app.route("/item/delete_forever/<item_id>", methods=["POST"])
 def delete_forever(item_id):
@@ -1098,7 +1032,6 @@ def delete_forever(item_id):
         log_event("delete_forever", username=username, item_id=item_id)
     return redirect("/virtual/trash")
 
-
 @app.route("/item/star/<item_id>", methods=["POST"])
 def toggle_star(item_id):
     db = get_db()
@@ -1106,7 +1039,6 @@ def toggle_star(item_id):
                (item_id, current_username()))
     db.commit()
     return redirect(safe_back())
-
 
 # --------------------------------------------------------------------------
 # Admin (role-based, not username-based)
@@ -1127,7 +1059,6 @@ def admin_panel():
                            total_storage_mb=round(total_bytes / (1024 * 1024), 2),
                            active_shares=active_shares)
 
-
 @csrf.exempt
 @app.route("/admin/delete_user/<username>", methods=["POST"])
 def admin_delete_user(username):
@@ -1146,7 +1077,6 @@ def admin_delete_user(username):
     log_event("admin_delete_user", username=current_username(), detail=username)
     return redirect("/admin")
 
-
 @csrf.exempt
 @app.route("/admin/delete_file/<file_id>", methods=["POST"])
 def admin_delete_file(file_id):
@@ -1159,7 +1089,6 @@ def admin_delete_file(file_id):
     db.commit()
     log_event("admin_delete_file", username=current_username(), item_id=file_id)
     return redirect("/admin")
-
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=os.environ.get("FLASK_DEBUG") == "1")
