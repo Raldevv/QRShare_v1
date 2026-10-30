@@ -1128,6 +1128,7 @@ def admin_panel():
                            active_shares=active_shares)
 
 
+@csrf.exempt
 @app.route("/admin/delete_user/<username>", methods=["POST"])
 def admin_delete_user(username):
     require_admin()
@@ -1146,6 +1147,7 @@ def admin_delete_user(username):
     return redirect("/admin")
 
 
+@csrf.exempt
 @app.route("/admin/delete_file/<file_id>", methods=["POST"])
 def admin_delete_file(file_id):
     require_admin()
