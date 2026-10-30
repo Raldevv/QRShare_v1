@@ -674,6 +674,7 @@ def register():
     return render_template("register.html", error=error, require_code=require_code)
 
 
+@csrf.exempt
 @app.route("/logout", methods=["POST"])
 def logout():
     if g.user:
