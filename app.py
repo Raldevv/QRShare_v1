@@ -809,26 +809,31 @@ def share_item(token):
                            download_link=url_for("share_download", token=token),
                            confirm_token=confirm)
 
-@csrf.exempt   # public, cookie-less action; protected by a signed, expiring confirm token instead
+@csrf.exempt
 @app.route("/share/<token>/download", methods=["POST"])
 def share_download(token):
-    """Burns a single-use token and redirects to a 60-second signed Cloudinary URL."""
     ip_key = f"share:{ip_fingerprint()}"
     if is_rate_limited(ip_key, 120, 60):
         abort(429)
     rate_hit(ip_key)
+    
+    def _fail():
+        if request.headers.get("Accept") == "application/json":
+            return jsonify({"success": False})
+        return redirect(url_for("share_item", token=token))
+
     try:
         confirmed = confirm_serializer.loads(request.form.get("confirm", ""), max_age=1800)
     except (BadSignature, SignatureExpired):
-        return redirect(url_for("share_item", token=token))
+        return _fail()
+        
     if not secrets.compare_digest(confirmed, hash_token(token)):
-        return redirect(url_for("share_item", token=token))
+        return _fail()
 
     share, item, state = lookup_share(token)
     if state != "active":
-        return redirect(url_for("share_item", token=token))
+        return _fail()
 
-    # Build the (purely local) signed URL first, then burn atomically.
     ext = item["name"].rsplit(".", 1)[-1].lower() if "." in item["name"] else ""
     cloud_url = signed_download_url(item["file_path"], ext)
 
@@ -839,10 +844,17 @@ def share_download(token):
         "WHERE id = ? AND (uses_left IS NULL OR uses_left > 0) AND (expires_at IS NULL OR expires_at > ?)",
         (share["id"], now))
     db.commit()
-    if cur.rowcount == 0:                      # lost the race, expired, or already burned
+    
+    if cur.rowcount == 0:
         log_event("share_download_denied", share_id=share["id"], detail="burned_or_expired")
-        return redirect(url_for("share_item", token=token))
+        return _fail()
+        
     log_event("share_download", item_id=item["id"], share_id=share["id"])
+    
+    # Support JSON response for bulletproof mobile downloads
+    if request.headers.get("Accept") == "application/json":
+        return jsonify({"success": True, "download_url": cloud_url})
+        
     return redirect(cloud_url, code=303)
 
 @app.route("/api/share/status/<token>")
