@@ -6,6 +6,11 @@
     <title>QRShare | Classroom Download Portal</title>
     <link rel="stylesheet" href="/static/css/index.css">
     <style>
+        /* Force remove cursive fallback to prevent FOUT (Flash of Unstyled Text) */
+        *, *::before, *::after, html, body, input, button, select, textarea {
+            font-family: 'Comic Neue Angular', system-ui, -apple-system, sans-serif !important;
+        }
+
         .portal-card {
             max-width: 480px;
             width: 100%;
@@ -102,7 +107,7 @@
             gap: 10px;
             text-decoration: none;
             box-shadow: 0 4px 18px var(--accent-glow);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.3s ease;
             cursor: pointer;
         }
 
@@ -167,9 +172,10 @@
             </div>
             {% endif %}
 
-            <form method="POST" action="{{ download_link }}" style="width:100%;margin:0;">
+            <!-- Form now uses onsubmit instead of a button onclick -->
+            <form id="download-form" method="POST" action="{{ download_link }}" style="width:100%;margin:0;" onsubmit="handleDownload(event)">
                 <input type="hidden" name="confirm" value="{{ confirm_token }}">
-                <button type="submit" class="download-btn" id="start-download-btn" style="border:0;width:100%;font:inherit;" onclick="handleStudentDownload(this)">
+                <button type="submit" class="download-btn" id="start-download-btn" style="border:0;width:100%;font:inherit;">
                 <svg style="width: 18px; height: 18px; stroke: #fff; fill: none; stroke-width: 2.2;" viewBox="0 0 24 24">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                     <polyline points="7 10 12 15 17 10"></polyline>
@@ -205,13 +211,42 @@
     </main>
 
     <script nonce="{{ csp_nonce }}">
-        function handleStudentDownload(btn) {
+        // Live Fetch Download Logic (Bypasses iOS Redirect Blocks)
+        function handleDownload(e) {
+            e.preventDefault();
+            const form = e.target;
+            const btn = form.querySelector('button');
+
             btn.style.opacity = '0.7';
             btn.style.pointerEvents = 'none';
-            btn.innerHTML = '<span>Starting Download...</span>';
-            setTimeout(() => {
-                btn.innerHTML = '<span>Downloaded &bull; Token Burned</span>';
-            }, 2500);
+            btn.innerHTML = '<span>Authenticating Secure Link...</span>';
+
+            fetch(form.action, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json'
+                },
+                body: new FormData(form)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.download_url) {
+                    // Forces iOS/Android to present the native file download popup
+                    window.location.href = data.download_url;
+                    
+                    // Update UI to burned state visually
+                    btn.innerHTML = '<span>Downloaded &bull; Token Burned</span>';
+                    btn.style.background = 'rgba(239, 68, 68, 0.15)';
+                    btn.style.border = '1px solid rgba(239, 68, 68, 0.35)';
+                    btn.style.color = '#f87171';
+                    btn.style.boxShadow = 'none';
+                } else {
+                    window.location.reload();
+                }
+            })
+            .catch(() => {
+                window.location.reload();
+            });
         }
 
         // Ambient interactive canvas
