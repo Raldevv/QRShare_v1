@@ -603,6 +603,7 @@ def welcome():
     return render_template("index.html")
 
 
+@csrf.exempt
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
@@ -630,6 +631,7 @@ def login():
     return render_template("login.html", error=error)
 
 
+@csrf.exempt
 @app.route("/register", methods=["GET", "POST"])
 def register():
     error = None
