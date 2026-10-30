@@ -473,32 +473,37 @@
             const qrImg = document.getElementById('share-modal-qr-img');
             const loader = document.getElementById('modal-qr-loader');
             const linkInput = document.getElementById('share-modal-link-input');
-
+        
             title.textContent = 'Share: ' + fileName;
             qrImg.classList.remove('visible');
             loader.style.display = 'flex';
             linkInput.value = 'Generating...';
             modal.style.display = 'flex';
-
+        
+            const csrfToken = '{{ csrf_token() }}';
             const formData = new FormData();
-            formData.append('csrf_token', '{{ csrf_token() }}');
+            formData.append('csrf_token', csrfToken);
             formData.append('duration', 'never');
             formData.append('uses', '1');
-
+        
             fetch('/api/item/share/' + fileId, {
                 method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken
+                },
                 body: formData
             })
-            .then(res => res.json())
-            .then(data => {
+            .then(res => res.json().then(data => ({ status: res.status, ok: res.ok, data })))
+            .then(({ ok, data }) => {
                 loader.style.display = 'none';
-                if (data.success) {
+                if (ok && data.success) {
                     qrImg.src = 'data:image/png;base64,' + data.qr_code;
                     qrImg.classList.add('visible');
                     linkInput.value = data.link;
                 } else {
+                    const errorMsg = data.error || 'Failed to generate ephemeral share link.';
                     linkInput.value = 'Error generating link';
-                    showToast('Failed to generate ephemeral share link.', 'error');
+                    showToast(errorMsg, 'error');
                 }
             })
             .catch(() => {
@@ -507,7 +512,7 @@
                 showToast('Network error while generating QR code.', 'error');
             });
         }
-
+        
         // Action Confirmation Modal Logic
         let pendingFormToSubmit = null;
 
