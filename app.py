@@ -77,8 +77,8 @@ MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "10"))  # Cloudinary free pl
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 REGISTRATION_CODE = os.environ.get("REGISTRATION_CODE", "")
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "").strip()
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+_USERNAME = os.environ.get("_USERNAME", "").strip()
+_PASSWORD = os.environ.get("_PASSWORD", "")
 
 SESSION_MAX_AGE = timedelta(hours=8)
 SIGNED_URL_TTL = 60          # seconds a Cloudinary download URL stays valid
@@ -269,7 +269,7 @@ _schema_ready = False
 
 
 def ensure_schema():
-    """Create tables once per server instance and bootstrap the admin account."""
+    """Create tables once per server instance and bootstrap the  account."""
     global _schema_ready
     if _schema_ready:
         return
@@ -623,6 +623,8 @@ def login():
             session["iat"] = int(time.time())
             rate_clear(user_key)
             log_event("login_ok", username=user["username"])
+            if user["role"] == "admin":
+                return redirect("/admin")
             return redirect("/")
         rate_hit(ip_key)
         rate_hit(user_key)
