@@ -1137,7 +1137,8 @@ def admin_delete_user(username):
     if not target:
         abort(404)
     if target["role"] == "admin":
-        abort(400, description="Administrator accounts cannot be deleted here.")
+        # Instead of crashing with an ugly 400 error, safely bounce back to admin panel
+        return redirect("/admin")
     for f in db.execute("SELECT file_path FROM items WHERE owner_id = ? AND type = 'file'", (username,)).fetchall():
         purge_cloud_file(f["file_path"])
     db.execute("DELETE FROM items WHERE owner_id = ?", (username,))
