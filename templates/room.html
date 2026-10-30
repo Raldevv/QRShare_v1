@@ -340,14 +340,32 @@
                 <h3 id="share-modal-title">Share Asset</h3>
                 <button type="button" class="close-modal-btn" onclick="closeModal('share-modal')">&times;</button>
             </div>
-            
+    
+            <div class="form-group">
+                <label>Expiration Window</label>
+                <select id="share-select-duration" onchange="generateShareLink()">
+                    <option value="1">1 Hour</option>
+                    <option value="2">2 Hours</option>
+                    <option value="24">24 Hours</option>
+                    <option value="never" selected>Keep indefinitely</option>
+                </select>
+            </div>
+    
+            <div class="form-group">
+                <label>Allowed Scans</label>
+                <select id="share-select-uses" onchange="generateShareLink()">
+                    <option value="1">Single download only (Burn after reading)</option>
+                    <option value="unli" selected>Unlimited scans until expired</option>
+                </select>
+            </div>
+    
             <div class="qr-modal-body">
                 <p class="qr-modal-subtitle">Instant QR token for secure direct download.</p>
                 <div class="qr-loader" id="modal-qr-loader">
                     <div class="qr-spinner"></div>
                 </div>
                 <img id="share-modal-qr-img" src="" alt="Dynamic Asset QR">
-
+    
                 <div class="share-link-input-group">
                     <input type="text" readonly id="share-modal-link-input" class="text-input">
                     <button type="button" class="btn-sub copy-btn copy-action-btn" onclick="copyLink('share-modal-link-input', this)">
@@ -467,26 +485,39 @@
             }
         }
 
+        let currentShareFileId = null;
+
         function openShareModal(fileId, fileName) {
+            currentShareFileId = fileId;
             const modal = document.getElementById('share-modal');
             const title = document.getElementById('share-modal-title');
+        
+            title.textContent = 'Share: ' + fileName;
+            modal.style.display = 'flex';
+        
+            generateShareLink();
+        }
+
+        function generateShareLink() {
+            if (!currentShareFileId) return;
+        
             const qrImg = document.getElementById('share-modal-qr-img');
             const loader = document.getElementById('modal-qr-loader');
             const linkInput = document.getElementById('share-modal-link-input');
+            const duration = document.getElementById('share-select-duration').value;
+            const uses = document.getElementById('share-select-uses').value;
         
-            title.textContent = 'Share: ' + fileName;
             qrImg.classList.remove('visible');
             loader.style.display = 'flex';
             linkInput.value = 'Generating...';
-            modal.style.display = 'flex';
         
             const csrfToken = '{{ csrf_token() }}';
             const formData = new FormData();
             formData.append('csrf_token', csrfToken);
-            formData.append('duration', 'never');
-            formData.append('uses', '1');
+            formData.append('duration', duration);
+            formData.append('uses', uses);
         
-            fetch('/api/item/share/' + fileId, {
+            fetch('/api/item/share/' + currentShareFileId, {
                 method: 'POST',
                 headers: {
                     'X-CSRFToken': csrfToken
