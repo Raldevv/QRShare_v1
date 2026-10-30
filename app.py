@@ -84,18 +84,21 @@ SESSION_MAX_AGE = timedelta(hours=8)
 SIGNED_URL_TTL = 60          # seconds a Cloudinary download URL stays valid
 MIN_PASSWORD_LEN = 10
 
-app = Flask(__name__, static_folder="public/static", static_url_path="/static")  # on Vercel the CDN serves /public first
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+app = Flask(__name__, static_folder="public/static", static_url_path="/static")
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
+
 app.config.update(
     SECRET_KEY=SECRET_KEY,
-    MAX_CONTENT_LENGTH=2 * 1024 * 1024,   # files never pass through Flask
+    MAX_CONTENT_LENGTH=2 * 1024 * 1024,
     WTF_CSRF_TIME_LIMIT=None,
-    SESSION_COOKIE_NAME="__Host-qrshare" if IS_PROD else "qrshare",
+    SESSION_COOKIE_NAME="qrshare_session",
     SESSION_COOKIE_SECURE=IS_PROD,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    PREFERRED_URL_SCHEME="https" if IS_PROD else "http",
     JSON_SORT_KEYS=False,
 )
+
 csrf = CSRFProtect(app)
 confirm_serializer = URLSafeTimedSerializer(SECRET_KEY, salt="qrshare-share-confirm")
 
