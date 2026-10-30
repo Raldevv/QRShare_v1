@@ -4,7 +4,7 @@
   src: url('../fonts/ComicNeue-Angular-Regular.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }
 
 @font-face {
@@ -12,7 +12,7 @@
   src: url('../fonts/ComicNeue-Angular_Bold.otf') format('opentype');
   font-weight: 700;
   font-style: normal;
-  font-display: swap;
+  font-display: block;
 }
 
 *,
@@ -24,7 +24,7 @@ input,
 button,
 select,
 textarea {
-  font-family: 'Comic Neue Angular', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-family: 'Comic Neue Angular', system-ui, -apple-system, sans-serif !important;
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -132,7 +132,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  
+
   /* Stable GPU composite: smooth fade without jitter or resizing */
   animation: smoothCardEntrance 0.35s ease-out forwards;
 }
