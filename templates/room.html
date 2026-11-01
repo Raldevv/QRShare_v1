@@ -344,6 +344,8 @@
                 <button type="button" class="close-modal-btn" onclick="closeModal('share-modal')">&times;</button>
             </div>
     
+            <!-- Options are intentionally hidden: the share modal only shows the QR code. -->
+            <div id="share-options" style="display:none;" aria-hidden="true">
             <div class="form-group">
                 <label>Expiration Window</label>
                 <select id="share-select-duration" onchange="generateShareLink()">
@@ -360,6 +362,7 @@
                     <option value="1">Single download only (Burn after reading)</option>
                     <option value="unli" selected>Unlimited scans until expired</option>
                 </select>
+            </div>
             </div>
     
             <div class="qr-modal-body">
@@ -405,11 +408,30 @@
             backdrop.classList.toggle('active');
         }
 
+        const ALLOWED_EXTS = {{ allowed_exts|tojson }};
+        const MAX_UPLOAD_BYTES = {{ max_upload_mb }} * 1024 * 1024;
+
+        // Returns an error message for an unusable file, or '' when it is fine.
+        function validateUploadFile(f) {
+            const ext = f.name.includes('.') ? f.name.split('.').pop().toLowerCase() : '';
+            if (!ALLOWED_EXTS.includes(ext)) return 'That file type is not supported.';
+            if (f.size <= 0 || f.size > MAX_UPLOAD_BYTES) return 'File must be between 1 byte and {{ max_upload_mb }} MB.';
+            return '';
+        }
+
         // Toggles glowing emerald green border on file selection
         function handleFileSelected(input) {
             const labelText = document.getElementById('upload-file-name');
             const dropZone = document.getElementById('drop-zone');
             if (input.files && input.files[0]) {
+                const problem = validateUploadFile(input.files[0]);
+                if (problem) {
+                    input.value = '';
+                    labelText.textContent = '+ Choose a File to Upload & Share';
+                    if (dropZone) dropZone.classList.remove('file-selected');
+                    showToast(problem, 'error');
+                    return;
+                }
                 labelText.textContent = 'Selected: ' + input.files[0].name;
                 if (dropZone) dropZone.classList.add('file-selected');
                 showToast('File selected: ' + input.files[0].name, 'info');
@@ -419,20 +441,58 @@
             }
         }
 
+        // ---- Drag & drop upload ------------------------------------------------
+        (function setupDragAndDrop() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            if (!dropZone || !fileInput) return;
+
+            const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+
+            // A file dropped anywhere else must not make the browser navigate away from the page.
+            ['dragover', 'drop'].forEach(type => {
+                window.addEventListener(type, (e) => { if (hasFiles(e)) e.preventDefault(); });
+            });
+
+            ['dragenter', 'dragover'].forEach(type => {
+                dropZone.addEventListener(type, (e) => {
+                    if (!hasFiles(e)) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    dropZone.classList.add('drag-over');
+                });
+            });
+
+            dropZone.addEventListener('dragleave', (e) => {
+                if (e.relatedTarget && dropZone.contains(e.relatedTarget)) return;
+                dropZone.classList.remove('drag-over');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                if (!hasFiles(e)) return;
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+
+                const files = e.dataTransfer.files;
+                if (!files || !files.length) return;
+                if (files.length > 1) showToast('Only one file at a time \u2014 using the first one.', 'info');
+
+                const dt = new DataTransfer();
+                dt.items.add(files[0]);
+                fileInput.files = dt.files;
+                handleFileSelected(fileInput);
+            });
+        })();
+
         function openUploadConfigModal() {
             const fileInput = document.getElementById('file-input');
             if (!fileInput.files || !fileInput.files[0]) {
                 showToast('Please select a file to upload first.', 'error');
                 return;
             }
-            const f = fileInput.files[0];
-            const ext = f.name.includes('.') ? f.name.split('.').pop().toLowerCase() : '';
-            if (!{{ allowed_exts|tojson }}.includes(ext)) {
-                showToast('That file type is not supported.', 'error');
-                return;
-            }
-            if (f.size <= 0 || f.size > {{ max_upload_mb }} * 1024 * 1024) {
-                showToast('File must be between 1 byte and {{ max_upload_mb }} MB.', 'error');
+            const problem = validateUploadFile(fileInput.files[0]);
+            if (problem) {
+                showToast(problem, 'error');
                 return;
             }
             document.getElementById('config-modal').style.display = 'flex';

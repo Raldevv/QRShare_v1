@@ -536,6 +536,16 @@ h2 {
   border-color: var(--accent-primary);
 }
 
+/* DRAG-OVER STATE: a file is being dragged over the drop zone */
+.file-upload-label.drag-over {
+  border-style: solid;
+  border-color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.14);
+  box-shadow: 0 0 24px rgba(99, 102, 241, 0.35);
+  transform: scale(1.01);
+}
+.file-upload-label.drag-over * { pointer-events: none; } /* stops child elements flickering dragleave */
+
 /* GREEN BORDER STATE: Activated when a file is selected */
 .file-upload-label.file-selected {
   border-color: #10b981 !important;
