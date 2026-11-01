@@ -314,11 +314,27 @@ def log_event(event, username=None, item_id=None, share_id=None, detail=None):
 # Upload validation: whitelist + deep content verification
 # --------------------------------------------------------------------------
 
-ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx",
-                      "png", "jpg", "jpeg", "gif", "txt", "zip"}
+ALLOWED_EXTENSIONS = {
+    # documents
+    "pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx",
+    "odt", "ods", "odp", "rtf",
+    # plain text / data / source code (never executed by the server)
+    "txt", "csv", "md", "json", "py", "java", "c", "cpp", "sql",
+    # images
+    "png", "jpg", "jpeg", "gif", "webp", "bmp",
+    # audio / video
+    "mp3", "wav", "mp4",
+    # archives
+    "zip",
+}
+TEXT_EXTENSIONS = {"txt", "csv", "md", "json", "py", "java", "c", "cpp", "sql"}
+ODF_MIME = {"odt": b"application/vnd.oasis.opendocument.text",
+            "ods": b"application/vnd.oasis.opendocument.spreadsheet",
+            "odp": b"application/vnd.oasis.opendocument.presentation"}
 OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 OOXML_ROOT = {"docx": "word/", "xlsx": "xl/", "pptx": "ppt/"}
-IMAGE_FORMAT = {"png": "PNG", "jpg": "JPEG", "jpeg": "JPEG", "gif": "GIF"}
+IMAGE_FORMAT = {"png": "PNG", "jpg": "JPEG", "jpeg": "JPEG", "gif": "GIF",
+                "webp": "WEBP", "bmp": "BMP"}
 
 def allowed_extension(filename: str):
     if "." not in filename:
@@ -345,6 +361,15 @@ def _check_zip(data: bytes, ext: str):
             return False, f"File is not a genuine .{ext} document."
         if any(n.lower().endswith("vbaproject.bin") for n in names):
             return False, "Documents containing macros are not allowed."
+    if ext in ODF_MIME:
+        try:
+            declared = zf.read("mimetype").strip()
+        except KeyError:
+            return False, f"File is not a genuine .{ext} document."
+        if declared != ODF_MIME[ext]:
+            return False, f"File is not a genuine .{ext} document."
+        if any(n.startswith(("Basic/", "Scripts/")) for n in names):
+            return False, "Documents containing macros are not allowed."
     return True, ""
 
 def verify_file_content(ext: str, data: bytes):
@@ -368,11 +393,27 @@ def verify_file_content(ext: str, data: bytes):
         except Exception:
             return False, "File content is not a valid image."
         return True, ""
-    if ext == "txt":
+    if ext in TEXT_EXTENSIONS:
         if b"\x00" in data:
             return False, "Text file contains binary data."
         return True, ""
-    if ext in ("zip", "docx", "xlsx", "pptx"):
+    if ext == "rtf":
+        if not head.lstrip().startswith(b"{\\rtf"):
+            return False, "File content is not a valid RTF document."
+        return True, ""
+    if ext == "mp3":
+        if not (head.startswith(b"ID3") or (len(head) > 1 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0)):
+            return False, "File content is not a valid MP3."
+        return True, ""
+    if ext == "wav":
+        if not (head[:4] == b"RIFF" and head[8:12] == b"WAVE"):
+            return False, "File content is not a valid WAV."
+        return True, ""
+    if ext == "mp4":
+        if head[4:8] != b"ftyp":
+            return False, "File content is not a valid MP4."
+        return True, ""
+    if ext in ("zip", "docx", "xlsx", "pptx", "odt", "ods", "odp"):
         if not head.startswith(b"PK\x03\x04"):
             return False, f"File content is not a valid .{ext}."
         return _check_zip(data, ext)
@@ -444,7 +485,9 @@ def set_csp_nonce():
 
 @app.context_processor
 def inject_globals():
-    return {"csp_nonce": g.get("csp_nonce", "")}
+    return {"csp_nonce": g.get("csp_nonce", ""),
+            "max_upload_mb": MAX_UPLOAD_MB,
+            "allowed_exts": sorted(ALLOWED_EXTENSIONS)}
 
 @app.after_request
 def security_headers(resp):

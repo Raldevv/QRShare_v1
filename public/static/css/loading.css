@@ -1,0 +1,67 @@
+/* QRShare - global loading modal (shown for every slow action) */
+.qrl-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(7, 9, 24, 0.72);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  cursor: progress;
+}
+.qrl-overlay.qrl-visible { display: flex; animation: qrl-fade 0.18s ease-out both; }
+
+.qrl-card {
+  width: min(92vw, 360px);
+  padding: 1.75rem 1.5rem 1.5rem;
+  text-align: center;
+  color: #e5e7ff;
+  background: rgba(20, 24, 52, 0.94);
+  border: 1px solid rgba(129, 140, 248, 0.35);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  animation: qrl-pop 0.22s ease-out both;
+}
+
+.qrl-spinner {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 1.1rem;
+  border-radius: 50%;
+  border: 4px solid rgba(129, 140, 248, 0.22);
+  border-top-color: #818cf8;
+  border-right-color: #34d399;
+  animation: qrl-spin 0.85s linear infinite;
+}
+
+.qrl-title { margin: 0 0 0.35rem; font-size: 1.05rem; font-weight: 700; letter-spacing: 0.01em; }
+.qrl-sub   { margin: 0; min-height: 1.2em; font-size: 0.85rem; line-height: 1.4; color: #a5b4fc; }
+
+.qrl-bar {
+  display: none;
+  height: 8px;
+  margin-top: 1rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(129, 140, 248, 0.18);
+}
+.qrl-bar.qrl-has-progress { display: block; }
+.qrl-bar-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6366f1, #34d399);
+  transition: width 0.2s ease;
+}
+
+@keyframes qrl-spin { to { transform: rotate(360deg); } }
+@keyframes qrl-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes qrl-pop  { from { opacity: 0; transform: translateY(8px) scale(0.97); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .qrl-overlay.qrl-visible, .qrl-card { animation: none; }
+  .qrl-spinner { animation-duration: 2s; }
+}

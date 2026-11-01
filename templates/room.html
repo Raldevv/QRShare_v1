@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>QRShare - Workspace</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/room.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/loading.css') }}">
+  <script src="{{ url_for('static', filename='js/loading.js') }}"></script>
 </head>
 <body>
     <!-- Ambient Backdrop Effects -->
@@ -180,10 +182,11 @@
                         </div>
                         <div class="upload-text">
                             <span class="primary-text" id="upload-file-name">+ Choose a File to Upload & Share</span>
-                            <span class="secondary-text">Click to browse or drop your document here</span>
+                            <span class="secondary-text">Click to browse or drop your file here &middot; Max {{ max_upload_mb }} MB</span>
                         </div>
                     </label>
-                    <input type="file" id="file-input" name="file" onchange="handleFileSelected(this)">
+                    <input type="file" id="file-input" name="file" onchange="handleFileSelected(this)"
+                           accept="{% for e in allowed_exts %}.{{ e }}{{ ',' if not loop.last }}{% endfor %}">
 
                     <button type="button" class="btn-submit" id="btn-trigger-upload" onclick="openUploadConfigModal()">
                         <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -422,7 +425,33 @@
                 showToast('Please select a file to upload first.', 'error');
                 return;
             }
+            const f = fileInput.files[0];
+            const ext = f.name.includes('.') ? f.name.split('.').pop().toLowerCase() : '';
+            if (!{{ allowed_exts|tojson }}.includes(ext)) {
+                showToast('That file type is not supported.', 'error');
+                return;
+            }
+            if (f.size <= 0 || f.size > {{ max_upload_mb }} * 1024 * 1024) {
+                showToast('File must be between 1 byte and {{ max_upload_mb }} MB.', 'error');
+                return;
+            }
             document.getElementById('config-modal').style.display = 'flex';
+        }
+
+        // Upload to Cloudinary with real progress (fetch cannot report upload progress)
+        function uploadToCloud(url, formData, onProgress) {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', url);
+                xhr.upload.onprogress = (ev) => {
+                    if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100));
+                };
+                xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
+                    ? resolve()
+                    : reject(new Error('Cloud upload failed. Check the file size and try again.'));
+                xhr.onerror = () => reject(new Error('Network error during upload. Please try again.'));
+                xhr.send(formData);
+            });
         }
 
         function closeModal(modalId) {
@@ -450,6 +479,7 @@
             spinner.style.display = 'inline-block';
 
             const headers = { 'Content-Type': 'application/json', 'X-CSRFToken': csrf };
+            QRLoading.start('Preparing secure upload\u2026', { maxMs: 0 });
             try {
                 btnText.textContent = 'Preparing secure upload...';
                 const signRes = await fetch('/api/upload/sign', {
@@ -460,21 +490,28 @@
                 if (!signRes.ok || !sign.success) throw new Error(sign.error || 'Could not start the upload.');
 
                 btnText.textContent = 'Uploading to Cloud...';
+                QRLoading.text('Uploading to the cloud\u2026 0%');
                 const fd = new FormData();
                 Object.entries(sign.fields).forEach(([k, v]) => fd.append(k, v));
                 fd.append('file', file);
-                const up = await fetch(sign.upload_url, { method: 'POST', body: fd });
-                if (!up.ok) throw new Error('Cloud upload failed. Check the file size and try again.');
+                await uploadToCloud(sign.upload_url, fd, (pct) => {
+                    QRLoading.text('Uploading to the cloud\u2026 ' + pct + '%');
+                    QRLoading.progress(pct);
+                });
 
                 btnText.textContent = 'Verifying file safety...';
+                QRLoading.text('Verifying file safety\u2026');
+                QRLoading.progress(100);
                 const finRes = await fetch('/api/upload/finalize', {
                     method: 'POST', headers, body: JSON.stringify({ upload_id: sign.upload_id })
                 });
                 const fin = await finRes.json();
                 if (!finRes.ok || !fin.success) throw new Error(fin.error || 'File verification failed.');
 
+                QRLoading.text('Done! Generating your QR code\u2026');
                 window.location.href = '/folder/' + parentId;
             } catch (err) {
+                QRLoading.stop();
                 btn.disabled = false;
                 btn.classList.remove('loading');
                 if (cancelBtn) { cancelBtn.disabled = false; cancelBtn.style.opacity = '1'; }
@@ -577,6 +614,7 @@
             if (pendingFormToSubmit) {
                 const modal = document.getElementById('confirm-modal');
                 modal.style.display = 'none';
+                QRLoading.start(QRLoading.labelFor(pendingFormToSubmit.getAttribute('action')));
                 pendingFormToSubmit.submit();
             }
         }
@@ -622,9 +660,10 @@
 
             toast.innerHTML = `
                 ${iconSvg}
-                <span class="toast-message">${message}</span>
+                <span class="toast-message"></span>
                 <button type="button" class="toast-close-btn" onclick="dismissToast(this.parentElement)">&times;</button>
             `;
+            toast.querySelector('.toast-message').textContent = message;
 
             container.appendChild(toast);
 
@@ -664,14 +703,14 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.active) {
-                        window.location.href = url;
+                        QRLoading.go(url, 'Opening shared file\u2026');
                     } else {
                         showToast('This ephemeral link has already been downloaded or expired.', 'error');
                         markQrAsBurned();
                     }
                 })
                 .catch(() => {
-                    window.location.href = url;
+                    QRLoading.go(url, 'Opening shared file\u2026');
                 });
         }
 
@@ -685,7 +724,7 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.exists) {
-                        window.location.href = targetUrl;
+                        QRLoading.go(targetUrl, 'Preparing your download\u2026');
                     } else {
                         showToast(`"${fileName}" was removed or is no longer available.`, 'error');
                         const row = document.getElementById('item-row-' + fileId);
@@ -696,7 +735,7 @@
                     }
                 })
                 .catch(() => {
-                    window.location.href = targetUrl;
+                    QRLoading.go(targetUrl, 'Preparing your download\u2026');
                 });
         }
 
@@ -724,7 +763,7 @@
             const shareId = linkInput.value.split('/').filter(Boolean).pop();
             if (shareId) {
                 const pollInterval = setInterval(() => {
-                    fetch('/api/share/status/' + shareId)
+                    fetch('/api/share/status/' + shareId, { loader: false })
                         .then(res => res.json())
                         .then(data => {
                             if (!data.active) {
@@ -747,7 +786,7 @@
             setInterval(() => {
                 if (document.hidden) return;
 
-                fetch('/api/folder/' + currentFolderId + '/contents')
+                fetch('/api/folder/' + currentFolderId + '/contents', { loader: false })
                     .then(res => res.json())
                     .then(data => {
                         if (data.success && Array.isArray(data.items)) {
